@@ -7,12 +7,8 @@ class UserData:
         self.visit = 0
         self.phone_number = None
         self.fi = None
-        self.user_id = 0
         self.services = []
-        self.menu_message_id = 0
         self.editing_services = False
-        self.answering = False
-        self.dealing = None
         self.description = None
         self.tg_id = 0
         self.username = None
@@ -25,3 +21,7 @@ class UserData:
             'emergency': 'Срочная помощь на дороге'
         }
         self.order_message_id = None
+        self.order_id = None
+        self.user_id_admin = None
+        self.answering = False
+

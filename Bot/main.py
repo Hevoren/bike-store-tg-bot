@@ -2,9 +2,9 @@
 # state == 2 отменен
 # state == 3 выполняется
 # state == 4 выполнен
-import telebot
+import time
 from telebot import types
-import telebot, time
+import telebot
 
 from DB.Connection import DatabaseConnection
 from Config.Config import Config
@@ -14,6 +14,8 @@ from DB.Requests import DatabaseRequests
 config = Config()
 
 bot = telebot.TeleBot(config.bot_token)
+bot.set_webhook()
+
 admin_chat_id = config.admin_chat_id
 
 db_connection = DatabaseConnection(config.db_name, config.host, config.user_name, config.password)
@@ -108,7 +110,30 @@ def callback_message(callback):
         connection_with_the_operator(callback.message)
 
     elif callback.data == 'write_to_client':
-        writing_to_client(callback.message)
+        order = db_requests.get_prop("orders", "*", "message_id", callback.message.message_id)
+        user = db_requests.get_prop("users", "*", "tg_id", callback.from_user.id)
+        user_chating = db_requests.get_prop("user_chating", "*", "order_id", order['id'])
+        if user is None:
+            db_requests.add_user_begin(callback.from_user.username, callback.from_user.id)
+
+        elif user_chating is None and user['is_answering'] != 1:
+            db_requests.add_user_chating(user['id'], order['username'], order['id'], callback.from_user.id)
+            db_requests.update_one_prop("users", "is_answering", 1, "tg_id", callback.from_user.id)
+            user_chating = db_requests.get_prop("user_chating", "*", "order_id", order['id'])
+            bot.send_message(admin_chat_id,
+                             f"@{callback.from_user.username} начал(а) писать @{user_chating['username_order']}")
+            user_data.order_id = order['id']
+            if callback.from_user.id == user_chating['tg_id']:
+                bot.register_next_step_handler(callback, send_to_user)
+
+        elif user_chating is not None and user['is_answering'] == 1 and user_chating[
+            'tg_id'] == callback.from_user.id and order['id'] == user_chating['order_id']:
+            db_requests.update_one_prop("users", "is_answering", 0, "tg_id", user['tg_id'])
+            db_requests.delete_user_chating(user['tg_id'])
+            bot.send_message(admin_chat_id,
+                             f"@{callback.from_user.username} закончил(а) писать @{user_chating['username_order']}")
+        else:
+            bot.send_message(admin_chat_id, f"@{callback.from_user.username} пожалуйста закончите предыдущий диалог")
 
     elif callback.data in ['1', '2', '3', '4', '5']:
         rate = callback.data
@@ -125,7 +150,7 @@ def callback_message(callback):
         keyboard = types.InlineKeyboardMarkup()
         keyboard.add(types.InlineKeyboardButton(text="Написать клиенту", callback_data='write_to_client'))
         bot.edit_message_text(
-            f"⚡️Заказ № {order['order_id']}⚡️ \nНикнейм - @{order['username']} \nНомер телефона - {order['phone_number']} \nПроблема - {order['description']}\nМестоположение - {order['geolocation']} \nУточнения - {order['geolocation_explain']} \nВиды работ - {user_data.services} \nОценка работы - {rate}",
+            f"⚡️Заказ № {order['id']}⚡️ \nНикнейм - @{order['username']} \nНомер телефона - {order['phone_number']} \nПроблема - {order['description']}\nМестоположение - {order['geolocation']} \nУточнения - {order['geolocation_explain']} \nВиды работ - {user_data.services} \nОценка работы - {rate}",
             admin_chat_id, user_data.order_message_id,
             reply_markup=keyboard,
             parse_mode="html")
@@ -137,41 +162,41 @@ def callback_message(callback):
 
         user_data.services = translate_services(order)
         if order['state'] == 1:
-            db_requests.update_order_state(order['order_id'], 3)
+            db_requests.update_order_state(order['id'], 3)
             tg_id = callback.from_user.id
-            db_requests.add_dealing_order(tg_id, order['order_id'], 3)
+            db_requests.add_dealing_order(tg_id, order['id'], 3)
 
             keyboard = types.InlineKeyboardMarkup()
             keyboard.add(types.InlineKeyboardButton(text="Написать клиенту", callback_data='write_to_client'))
             keyboard.add(types.InlineKeyboardButton(text="Я на месте", callback_data='deal'))
             bot.edit_message_text(
-                f"⚡️️Заказ № {order['order_id']}⚡️ \nНикнейм - @{order['username']} \nНомер телефона - {order['phone_number']} \nПроблема - {order['description']}\nМестоположение - {order['geolocation']} \nУточнения - {order['geolocation_explain']} \nВиды работ - {user_data.services} \n",
+                f"⚡️️Заказ № {order['id']}⚡️ \nНикнейм - @{order['username']} \nНомер телефона - {order['phone_number']} \nПроблема - {order['description']}\nМестоположение - {order['geolocation']} \nУточнения - {order['geolocation_explain']} \nВиды работ - {user_data.services} \n",
                 admin_chat_id, order_message_id,
                 reply_markup=keyboard)
-        elif (order['state'] == 3) and (db_requests.get_prop("user_order", "*", "order_id", order['order_id'])[
+        elif (order['state'] == 3) and (db_requests.get_prop("user_order", "*", "order_id", order['id'])[
                                             'tg_id'] == callback.from_user.id):
-            db_requests.update_order_state(order['order_id'], 4)
-            dealing_order = db_requests.get_prop("user_order", "*", "order_id", order["order_id"])
-            db_requests.update_dealing_order(dealing_order['user_order_id'], 4)
+            db_requests.update_order_state(order['id'], 4)
+            dealing_order = db_requests.get_prop("user_order", "*", "order_id", order["id"])
+            db_requests.update_dealing_order(dealing_order['id'], 4)
 
             keyboard = types.InlineKeyboardMarkup()
             keyboard.add(types.InlineKeyboardButton(text="Написать клиенту", callback_data='write_to_client'))
             keyboard.add(types.InlineKeyboardButton(text="Выполнил", callback_data='deal'))
             bot.edit_message_text(
-                f"⚡️️Заказ № {order['order_id']}⚡️ \nНикнейм - @{order['username']} \nНомер телефона - {order['phone_number']} \nПроблема - {order['description']}\nМестоположение - {order['geolocation']} \nУточнения - {order['geolocation_explain']} \nВиды работ - {user_data.services} \n",
+                f"⚡️️Заказ № {order['id']}⚡️ \nНикнейм - @{order['username']} \nНомер телефона - {order['phone_number']} \nПроблема - {order['description']}\nМестоположение - {order['geolocation']} \nУточнения - {order['geolocation_explain']} \nВиды работ - {user_data.services} \n",
                 admin_chat_id, order_message_id,
                 reply_markup=keyboard)
-        elif (order['state'] == 4) and (db_requests.get_prop("user_order", "*", "order_id", order['order_id'])[
+        elif (order['state'] == 4) and (db_requests.get_prop("user_order", "*", "order_id", order['id'])[
                                             'tg_id'] == callback.from_user.id):
-            db_requests.update_order_state(order['order_id'], 5)
-            dealing_order = db_requests.get_prop("user_order", "*", "order_id", order["order_id"])
-            db_requests.update_dealing_order(dealing_order['user_order_id'], 5)
+            db_requests.update_order_state(order['id'], 5)
+            dealing_order = db_requests.get_prop("user_order", "*", "order_id", order["id"])
+            db_requests.update_dealing_order(dealing_order['id'], 5)
 
             keyboard = types.InlineKeyboardMarkup()
             keyboard.add(types.InlineKeyboardButton(text="Написать клиенту", callback_data='write_to_client'))
             keyboard.add(types.InlineKeyboardButton(text="Выполнено ✅", callback_data='asdasd'))
             bot.edit_message_text(
-                f"⚡️️Заказ № {order['order_id']}⚡️ \nНикнейм - @{order['username']} \nНомер телефона - {order['phone_number']} \nПроблема - {order['description']}\nМестоположение - {order['geolocation']} \nУточнения - {order['geolocation_explain']} \nВиды работ - {user_data.services} \n",
+                f"⚡️️Заказ № {order['id']}⚡️ \nНикнейм - @{order['username']} \nНомер телефона - {order['phone_number']} \nПроблема - {order['description']}\nМестоположение - {order['geolocation']} \nУточнения - {order['geolocation_explain']} \nВиды работ - {user_data.services} \n",
                 admin_chat_id, order_message_id,
                 reply_markup=keyboard)
             rate_work(order['tg_id'], order_message_id)
@@ -181,18 +206,17 @@ def callback_message(callback):
 
 # -----------------------------------------------------------------------------------------
 def connection_with_the_operator(message):
-    bot.edit_message_text('В ближайшее время вам ответит админстратор', message.chat.id, message.message_id)
-
-    bot.send_message(admin_chat_id, "Поступила заявка для обратной связи")
+    bot.edit_message_text(f"Напишите сообщение администртору", message.chat.id, message.message_id)
+    bot.register_next_step_handler(message, send_to_admin)
 
 
 # -----------------------------------------------------------------------------------------
 def canceling_order(message):
     order = db_requests.get_last_order(message.chat.id)
     if order['state'] == 1:
-        db_requests.update_one_prop('orders', 'state', 2, 'order_id', order['order_id'])
-        bot.send_message(admin_chat_id, f"Заказ №{order['order_id']} - *Отменен*")
-        bot.send_message(message.chat.id, f"Заказ №{order['order_id']} - *Отменен*")
+        db_requests.update_one_prop('orders', 'state', 2, 'order_id', order['id'])
+        bot.send_message(admin_chat_id, f"Заказ №{order['id']} - *Отменен*")
+        bot.send_message(message.chat.id, f"Заказ №{order['id']} - *Отменен*")
     elif order['state'] == 2 or 4:
         bot.delete_message(message.chat.id, message.message_id)
         bot.send_message(admin_chat_id, 'Невозможно отменить завершеный или отмененный заказ')
@@ -402,10 +426,10 @@ def to_order_listener(message):
             user_data.description = message.text
             tmp_services = ', '.join(map(str, user_data.services))
             user = db_requests.get_user_info(message.chat.id)
-            db_requests.add_order(tmp_services, message.chat.id, user['user_id'], user['username'], user['phone_number'], user_data.geolocation_text,
+            db_requests.add_order(tmp_services, message.chat.id, user['id'], user['username'],
+                                  user['phone_number'], user_data.geolocation_text,
                                   f"{user_data.lon}:{user_data.lat}", user_data.geolocation_explain,
                                   user_data.description)
-
             bot.send_message(message.chat.id, "С вами свяжутся в течении 15 минут")
             send_to_chat(message)
         elif message.text == '/start':
@@ -432,8 +456,6 @@ def to_order_listener(message):
 def send_to_chat(message):
     user = db_requests.get_user_info(message.from_user.id)
     order = db_requests.get_last_order(user['tg_id'])
-    print(user)
-    print(order)
     if len(order['geolocation_coordinates']) == 19 and ':' in order['geolocation_coordinates']:
         parts = order['geolocation_coordinates'].split(':')
         if len(parts) == 2:
@@ -445,13 +467,12 @@ def send_to_chat(message):
     user_data.geolocation_explain = order['geolocation_explain']
 
     user_data.services = translate_services(order)
-    print(user_data.services)
     if user_data.lat and user_data.lon:
         keyboard = types.InlineKeyboardMarkup()
         keyboard.add(types.InlineKeyboardButton(text="Написать клиенту", callback_data='write_to_client'))
         keyboard.add(types.InlineKeyboardButton(text="Договорился", callback_data='deal'))
         sent_message = bot.send_message(admin_chat_id,
-                                        f"⚡️️Заказ № {order['order_id']}⚡️ \nНикнейм - @{order['username']} \nНомер телефона - {order['phone_number']} \nПроблема - {order['description']}\nУточнения - {order['geolocation_explain']} \nВиды работ - {user_data.services} \n",
+                                        f"⚡️️Заказ № {order['id']}⚡️ \nНикнейм - @{order['username']} \nНомер телефона - {order['phone_number']} \nПроблема - {order['description']}\nУточнения - {order['geolocation_explain']} \nВиды работ - {user_data.services} \n",
                                         reply_markup=keyboard)
         bot.send_location(admin_chat_id, user_data.lat, user_data.lon)
     else:
@@ -459,27 +480,39 @@ def send_to_chat(message):
         keyboard.add(types.InlineKeyboardButton(text="Написать клиенту", callback_data='write_to_client'))
         keyboard.add(types.InlineKeyboardButton(text="Договорился", callback_data='deal'))
         sent_message = bot.send_message(admin_chat_id,
-                                        f"⚡️️Заказ № {order['order_id']}⚡️ \nНикнейм - @{order['username']} \nНомер телефона - {order['phone_number']} \nПроблема - {order['description']}\nМестоположение - {order['geolocation']} \nУточнения - {order['geolocation_explain']} \nВиды работ - {user_data.services} \n",
+                                        f"⚡️️Заказ № {order['id']}⚡️ \nНикнейм - @{order['username']} \nНомер телефона - {order['phone_number']} \nПроблема - {order['description']}\nМестоположение - {order['geolocation']} \nУточнения - {order['geolocation_explain']} \nВиды работ - {user_data.services} \n",
                                         reply_markup=keyboard)
 
     db_requests.update_order_message_id(sent_message.message_id,
-                                        db_requests.get_last_order(user_data.tg_id)['order_id'])
+                                        db_requests.get_last_order(user_data.tg_id)['id'])
 
 
 # -----------------------------------------------------------------------------------------
 
-def writing_to_client(message):
-    print(message.from_user.id)
+def send_to_user(message):
+    print('asdasdasd')
+    order = db_requests.get_prop("orders", "*", "order_id", user_data.order_id)
+    user = db_requests.get_prop("users", "*", "user_id", user_data.user_id_admin)
+    bot.send_message(order['tg_id'], f"Сообщение от Администратора: {message.text}")
 
+
+# -----------------------------------------------------------------------------------------
+
+def send_to_admin(message):
+    bot.send_message(admin_chat_id, f"Поступило сообщение от @{message.from_user.username}: {message.text}")
+    bot.send_message(message.chat.id, f"Ваше сообщение успешно отправлено, через некоторое вермя вам ответят")
+
+
+# -----------------------------------------------------------------------------------------
 
 def rate_work(user_id, order_message_id):
     user_data.order_message_id = order_message_id
-    keyboard = types.InlineKeyboardMarkup()
-    keyboard.add(types.InlineKeyboardButton(text="1", callback_data="1"))
-    keyboard.add(types.InlineKeyboardButton(text="2", callback_data="2"))
-    keyboard.add(types.InlineKeyboardButton(text="3", callback_data="3"))
-    keyboard.add(types.InlineKeyboardButton(text="4", callback_data="4"))
-    keyboard.add(types.InlineKeyboardButton(text="5", callback_data="5"))
+    keyboard = types.InlineKeyboardMarkup(row_width=6)
+    keyboard.add(types.InlineKeyboardButton(text="1", callback_data="1"),
+                 types.InlineKeyboardButton(text="2", callback_data="2"),
+                 types.InlineKeyboardButton(text="3", callback_data="3"))
+    keyboard.add(types.InlineKeyboardButton(text="4", callback_data="4"),
+                 types.InlineKeyboardButton(text="5", callback_data="5"))
     bot.send_message(user_id, "Ваш заказ выполнен!\nОцените качество обслуживания", reply_markup=keyboard)
 
 

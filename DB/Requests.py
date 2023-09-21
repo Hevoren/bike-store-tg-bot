@@ -14,9 +14,16 @@ class DatabaseRequests:
             cursor.execute(sql)
         self.connection.commit()
 
+    def add_user_chating(self, user_id, username_order, order_id, tg_id):
+        with self.connection.cursor() as cursor:
+            sql = f"INSERT INTO `user_chating` (`user_id`, `username_order`, `order_id`, `tg_id`) VALUES ('{user_id}', '{username_order}', '{order_id}', '{tg_id}')"
+            cursor.execute(sql)
+        self.connection.commit()
+
         # Добавление заказа в бд
 
-    def add_order(self, tmp_services_str, tg_id, user_id, username, phone_number, geolocation, geolocation_coordinates, geolocation_explain,
+    def add_order(self, tmp_services_str, tg_id, user_id, username, phone_number, geolocation, geolocation_coordinates,
+                  geolocation_explain,
                   description):
         with self.connection.cursor() as cursor:
             sql = f"INSERT INTO `orders` (`services`, `tg_id`, `user_id`, `username`, `phone_number`, `geolocation`, `geolocation_coordinates`, `geolocation_explain`, `description`) VALUES ('{tmp_services_str}', '{tg_id}', '{user_id}', '{username}', '{phone_number}', '{geolocation}', '{geolocation_coordinates}', '{geolocation_explain}', '{description}')"
@@ -52,19 +59,17 @@ class DatabaseRequests:
     # Получение последнего заказа для дальнейшей отправки в чат
     def get_last_order(self, tg_id):
         with self.connection.cursor() as cursor:
-            sql = f"SELECT * from `orders` WHERE `tg_id` = {tg_id} ORDER BY `order_id` DESC LIMIT 1"
+            sql = f"SELECT * from `orders` WHERE `tg_id` = {tg_id} ORDER BY `id` DESC LIMIT 1"
             cursor.execute(sql)
             last_order = cursor.fetchone()
         self.connection.commit()
         return last_order
 
-    # def get_dealing(self, ):
-
     # ---------------------------------------------------------------------------
 
     def update_order_state(self, order_id, state_id):
         with self.connection.cursor() as cursor:
-            sql = f"UPDATE orders set state = '{state_id}' WHERE `order_id` = {order_id}"
+            sql = f"UPDATE orders set state = '{state_id}' WHERE `id` = {order_id}"
             cursor.execute(sql)
         self.connection.commit()
 
@@ -80,11 +85,17 @@ class DatabaseRequests:
             cursor.execute(sql, {value, value2, value_condition})
         self.connection.commit()
 
+    def update_three_prop(self, table, column, value, column2, value2, column3, value3, condition_column, value_condition):
+        with self.connection.cursor() as cursor:
+            sql = f"UPDATE {table} SET {column} = %s, {column2} = %s, {column3} = %s WHERE {condition_column} = %s"
+            cursor.execute(sql, {value, value2, value3, value_condition})
+        self.connection.commit()
+
     # ---------------------------------------------------------------------------
 
     def update_order_message_id(self, message_id, order_id):
         with self.connection.cursor() as cursor:
-            sql = f"UPDATE orders set message_id = '{message_id}' WHERE order_id = '{order_id}'"
+            sql = f"UPDATE orders set message_id = '{message_id}' WHERE id = '{order_id}'"
             cursor.execute(sql)
         self.connection.commit()
 
@@ -92,6 +103,14 @@ class DatabaseRequests:
 
     def update_dealing_order(self, user_order_id, state_id):
         with self.connection.cursor() as cursor:
-            sql = f"UPDATE user_order set state_id = '{state_id}' WHERE user_order_id = '{user_order_id}'"
+            sql = f"UPDATE user_order set state_id = '{state_id}' WHERE id = '{user_order_id}'"
+            cursor.execute(sql)
+        self.connection.commit()
+
+    # ---------------------------------------------------------------------------
+
+    def delete_user_chating(self, tg_id):
+        with self.connection.cursor() as cursor:
+            sql = f"DELETE FROM user_chating WHERE tg_id = '{tg_id}'"
             cursor.execute(sql)
         self.connection.commit()

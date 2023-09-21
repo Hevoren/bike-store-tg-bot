@@ -35,7 +35,7 @@ class DatabaseConnection:
         with self.connection.cursor() as cursor:
             create_users_table_query = """
             CREATE TABLE IF NOT EXISTS `users` (
-                `user_id` INT AUTO_INCREMENT PRIMARY KEY,
+                `id` INT AUTO_INCREMENT PRIMARY KEY,
                 `tg_id` VARCHAR(255),
                 `username` VARCHAR(255),
                 `phone_number` VARCHAR(255),
@@ -47,7 +47,7 @@ class DatabaseConnection:
 
             create_orders_table_query = """
             CREATE TABLE IF NOT EXISTS `orders` (
-                `order_id` INT AUTO_INCREMENT PRIMARY KEY,
+                `id` INT AUTO_INCREMENT PRIMARY KEY,
                 `user_id` INT,
                 `tg_id` INT,
                 `services` TEXT,
@@ -64,16 +64,16 @@ class DatabaseConnection:
             """
             cursor.execute(create_orders_table_query)
 
-            create_orders_table_query = """
+            create_states_table_query = """
             CREATE TABLE IF NOT EXISTS `states` (
-                `state_id` INT AUTO_INCREMENT PRIMARY KEY,
+                `id` INT AUTO_INCREMENT PRIMARY KEY,
                 `state` VARCHAR(255),
                 FOREIGN KEY (`user_id`) REFERENCES `users`(`user_id`)
             )
             """
-            cursor.execute(create_orders_table_query)
+            cursor.execute(create_states_table_query)
 
-            create_orders_table_query = """
+            create_user_order_table_query = """
             CREATE TABLE IF NOT EXISTS `user_order` (
                 `user_order_id` INT AUTO_INCREMENT PRIMARY KEY,
                 `tg_id` INT,
@@ -83,7 +83,7 @@ class DatabaseConnection:
                 FOREIGN KEY (`state_id`) REFERENCES `states`(`state_id`)
             )
             """
-            cursor.execute(create_orders_table_query)
+            cursor.execute(create_user_order_table_query)
 
             print("Созданы таблицы `users`, `orders`, `states`, `user_order`")
 
